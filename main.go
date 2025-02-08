@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"crypto/tls"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -32,6 +34,16 @@ var Gray = "\033[37m"
 var White = "\033[97m"
 var Dark = "\033[90m"
 var clear map[string]func() //create a map for storing clear funcs
+
+// Add package-level variables
+var (
+	outputFormat    string
+	outputFile      *os.File
+	ForbiddenList   []string
+	verbose         bool
+	defaultDirsFile = "dirs-list.txt" // default file for directories list
+	successCount    int               // track successful bypasses
+)
 
 func init() {
 	clear = make(map[string]func()) //Initialize it
@@ -61,22 +73,22 @@ func init() {
 
 /////////////////////////////////////////////////////////
 
-////| Clear the terminal screen ...
+// //| Clear the terminal screen ...
 func scre3n() {
 	/////| This code from :-> https://stackoverflow.com/questions/22891644/how-can-i-clear-the-terminal-screen-in-go
 	value, ok := clear[runtime.GOOS] //runtime.GOOS -> linux, windows, darwin etc.
 	if ok {                          //if we defined a clear func for that platform:
 		value() //we execute it
-	} 
-	/* No need to exit the app if the tool cannot clear the screen :D 
+	}
+	/* No need to exit the app if the tool cannot clear the screen :D
 	else { //unsupported platform
-		
+
 		//panic("Your platform is unsupported! I can't clear terminal screen :(")
 	}
 	*/
 }
 
-////| Error handling function ...
+// //| Error handling function ...
 func err0r(oNe error, msg string) {
 	if oNe != nil {
 		scre3n()
@@ -86,8 +98,8 @@ func err0r(oNe error, msg string) {
 	}
 }
 
-///| This function is to find the forbidden directories .....
-func ForbidFinder(domain string, wl string, nf bool, TimeOut int, OnlyOk bool, isItSingle bool) {
+// /| This function is to find the forbidden directories .....
+func ForbidFinder(domain string, wl []string, nf bool, TimeOut int, OnlyOk bool, isItSingle bool) {
 
 	if isItSingle {
 		fmt.Println("			-[ YOUR TARGET : ", domain, " ]-\n\n")
@@ -123,87 +135,51 @@ func ForbidFinder(domain string, wl string, nf bool, TimeOut int, OnlyOk bool, i
 		return
 	}
 
-	if wl != "" {
-		ForbiddenList, err := os.Open(wl)
+	for _, WordList := range wl {
+		FullUrl := fmt.Sprintf("%s/%s/", domain, WordList)
+		reQ, err := client.Get(FullUrl)
 		if err != nil {
-			finalErr := fmt.Sprintf("%s [%s]", "There was error opening this file!", wl)
-			err0r(err, finalErr)
+			return
 		}
-		defer ForbiddenList.Close()
-		ForbiDDen := bufio.NewScanner(ForbiddenList)
-		for ForbiDDen.Scan() {
-			WordList := ForbiDDen.Text()
-			FullUrl := fmt.Sprintf("%s/%s/", domain, WordList)
-			reQ, err := client.Get(FullUrl)
+		defer reQ.Body.Close()
+		if reQ.StatusCode == 403 {
+			do3r(domain, WordList, TimeOut, OnlyOk)
+		} else if reQ.StatusCode == http.StatusOK {
+			bodyBytes, err := ioutil.ReadAll(reQ.Body)
 			if err != nil {
 				return
 			}
-			defer reQ.Body.Close()
-			if reQ.StatusCode == 403 {
-				do3r(domain, WordList, TimeOut, OnlyOk)
-			} else if reQ.StatusCode == http.StatusOK {
-				bodyBytes, err := ioutil.ReadAll(reQ.Body)
-				if err != nil {
-					return
-				}
-				bodyString := string(bodyBytes)
-				Directory1StCase := "Index of /" + WordList
-				DirectorySecCase := "Directory /" + WordList
-				Directory3RdCase := "Directory listing for /" + WordList
-				if strings.Contains(bodyString, Directory1StCase) || strings.Contains(bodyString, DirectorySecCase) || strings.Contains(bodyString, Directory3RdCase) {
-					fmt.Println(White, "  [+] -", Green, " Directory listing ", White, "[", Cyan, FullUrl, White, "]", "Response code ", "[", reQ.StatusCode, "]")
+			bodyString := string(bodyBytes)
+			Directory1StCase := "Index of /" + WordList
+			DirectorySecCase := "Directory /" + WordList
+			Directory3RdCase := "Directory listing for /" + WordList
+			if strings.Contains(bodyString, Directory1StCase) || strings.Contains(bodyString, DirectorySecCase) || strings.Contains(bodyString, Directory3RdCase) {
+				fmt.Println(White, "  [+] -", Green, " Directory listing ", White, "[", Cyan, FullUrl, White, "]", "Response code ", "[", reQ.StatusCode, "]")
 
-				}
+			}
+		} else {
+			if nf {
+				fmt.Println(Purple, "   [X] NOT FOUND : ", White, "[", Blue, FullUrl, White, "]", " With code -> ", "[", Red, reQ.StatusCode, White, "]")
 			} else {
-				if nf {
-					fmt.Println(Purple, "   [X] NOT FOUND : ", White, "[", Blue, FullUrl, White, "]", " With code -> ", "[", Red, reQ.StatusCode, White, "]")
-				} else {
-				}
 			}
 		}
-	} else {
-		ForbiddenList := []string{"admin", "test", "img", "inc", "includes", "include", "images", "pictures", "gallery", "css", "js", "asset", "assets", "backup", "static", "cms", "blog", "uploads", "files"}
-		for i := range ForbiddenList {
-			WordList := ForbiddenList[i]
-			FullUrl := fmt.Sprintf("%s/%s/", domain, WordList)
-			reQ, err := client.Get(FullUrl)
-			if err != nil {
-				return
-			}
-			defer reQ.Body.Close()
-			if reQ.StatusCode == 403 {
-				do3r(domain, WordList, TimeOut, OnlyOk)
-			} else if reQ.StatusCode == http.StatusOK {
-				bodyBytes, err := ioutil.ReadAll(reQ.Body)
-				if err != nil {
-					return
-				}
-				bodyString := string(bodyBytes)
-				Directory1StCase := "Index of /" + WordList
-				DirectorySecCase := "Directory /" + WordList
-				Directory3RdCase := " - " + WordList
-				if strings.Contains(bodyString, Directory1StCase) || strings.Contains(bodyString, DirectorySecCase) || strings.Contains(bodyString, Directory3RdCase) {
-					fmt.Println("\n", White, "	  [+] - ", Green, "Directory listing ", White, "[", Blue, FullUrl, White, "]", "Response code -> ", "[", Green, reQ.StatusCode, White, "]", "\n")
-
-				}
-			} else {
-				if nf {
-					fmt.Println(Purple, "   [X] NOT FOUND : ", White, "[", Blue, FullUrl, White, "]", " With code -> ", "[", Red, reQ.StatusCode, White, "]")
-				} else {
-
-				}
-			}
-
-		}
-
 	}
-
-	//wG2.Wait()
-	//	return true
 
 }
 
+// Add new struct for JSON/CSV output
+type ScanResult struct {
+	Target     string `json:"target"`
+	Path       string `json:"path"`
+	Payload    string `json:"payload"`
+	StatusCode int    `json:"status_code"`
+	Timestamp  string `json:"timestamp"`
+}
+
+// Modify do3r function to handle output
 func do3r(domain string, path string, TimeOut int, OnlyOk bool) {
+	// Reset successCount for each directory test
+	successCount = 0
 	ByPass := []string{"%20" + path + "%20/", "%2e/" + path, "./" + path + "/./", "/" + path + "//", path + "..;/", path + "./", path + "/", path + "/*", path + "/.", path + "//", path + "?", path + "???", path + "%20/", path + "/%25", path + "/.randomstring"}
 	ByPassWithHeader := []string{"X-Custom-IP-Authorization", "X-Originating-IP", "X-Forwarded-For", "X-Remote-IP", "X-Client-IP", "X-Host", "X-Forwarded-Host"}
 	timeout := time.Duration(TimeOut * 1000000)
@@ -228,9 +204,13 @@ func do3r(domain string, path string, TimeOut int, OnlyOk bool) {
 	}
 	FinalLook := fmt.Sprintf("%s/%s/", domain, path)
 	FinalLookToReq := fmt.Sprintf("%s/%s/", domain, path)
-	if !OnlyOk {
-		fmt.Println(White, "	[+]", Cyan, "- FOUND", White, "[", Blue, FinalLook, White, "]", "  With code ->", "[", Yellow, "403", White, "]")
+
+	// Only show initial 403 in verbose mode and when not OnlyOk
+	if verbose && !OnlyOk {
+		fmt.Println(White, "	[+]", Cyan, "- Testing", White, "[", Blue, FinalLook, White, "]")
 	}
+
+	totalTests := len(ByPassWithHeader) + len(ByPass)
 
 	for t0Bypass2 := range ByPassWithHeader {
 		//FullUrl := fmt.Sprintf("%s/%s", domain, )
@@ -255,13 +235,37 @@ func do3r(domain string, path string, TimeOut int, OnlyOk bool) {
 			DirectorySecCase := "Directory /" + path
 			Directory3RdCase := " - " + path
 			if strings.Contains(bodyString, Directory1StCase) || strings.Contains(bodyString, DirectorySecCase) || strings.Contains(bodyString, Directory3RdCase) {
-				fmt.Println("\n", Yellow, "	  [+] - BYPASSED : payload", White, "[", Green, ByPassWithHeader[t0Bypass2], ": 127.0.0.1", "] :", "] ", Blue, FinalLook, White, " -> Response status code [", Green, resp.StatusCode, White, "]\n")
-
+				// Always show successful bypasses
+				logBypass(FinalLook, ByPassWithHeader[t0Bypass2]+": 127.0.0.1", resp.StatusCode)
 			}
 			//finalWG.Done()
 			//time.Sleep(10 * time.Second)
+
+			// Add result handling for successful bypasses
+			result := ScanResult{
+				Target:     domain,
+				Path:       path,
+				Payload:    ByPassWithHeader[t0Bypass2] + ": 127.0.0.1",
+				StatusCode: resp.StatusCode,
+				Timestamp:  time.Now().Format(time.RFC3339),
+			}
+
+			// Handle different output formats
+			if outputFormat == "json" {
+				jsonData, _ := json.Marshal(result)
+				if outputFile != nil {
+					fmt.Fprintln(outputFile, string(jsonData))
+				}
+			} else if outputFormat == "csv" {
+				csvLine := fmt.Sprintf("%s,%s,%s,%d,%s\n",
+					result.Target, result.Path, result.Payload,
+					result.StatusCode, result.Timestamp)
+				if outputFile != nil {
+					fmt.Fprint(outputFile, csvLine)
+				}
+			}
 		} else {
-			if !OnlyOk {
+			if !OnlyOk && verbose {
 				fmt.Println(White, "	  [-]", Yellow, " - FAILED : payload", White, "[", Green, ByPassWithHeader[t0Bypass2], ": 127.0.0.1", White, "] ", Blue, FinalLook, White, " -> Response status code [", Red, resp.StatusCode, White, "]")
 			}
 		}
@@ -287,20 +291,32 @@ func do3r(domain string, path string, TimeOut int, OnlyOk bool) {
 			DirectorySecCase := "Directory /" + path
 			Directory3RdCase := " - " + path
 			if strings.Contains(bodyString, Directory1StCase) || strings.Contains(bodyString, DirectorySecCase) || strings.Contains(bodyString, Directory3RdCase) {
-				fmt.Println("\n", Yellow, "	  [+] - BYPASSED : payload", White, "[", Green, ByPass[t0Bypass], White, "] ", Blue, FinalLook, White, " -> Response status code [", Green, reQ.StatusCode, White, "]\n")
-
+				// Always show successful bypasses
+				logBypass(FullUrl, ByPass[t0Bypass], reQ.StatusCode)
 			}
 			//stime.Sleep(10 * time.Second)
 		} else {
-			if !OnlyOk {
+			if !OnlyOk && verbose {
 				fmt.Println(White, "	  [-]", Yellow, " - FAILED : payload", White, "[", Green, ByPass[t0Bypass], White, "] ", Blue, FullUrl, White, " -> Response status code [", Red, reQ.StatusCode, White, "]")
 			}
 		}
 	}
 
+	// Add summary at the end if verbose
+	if verbose {
+		fmt.Printf("\nCompleted testing %s: %d/%d bypasses successful\n",
+			FinalLook, successCount, totalTests)
+	}
 }
 
-func worker(domain chan string, wg *sync.WaitGroup, wl string, nf bool, TimeOut int, OnlyOk bool) {
+// Helper function to log successful bypass
+func logBypass(url, payload string, statusCode int) {
+	successCount++ // Increment the package-level counter
+	fmt.Printf("\n%s	  [+] - BYPASSED : %s -> [%d]\n",
+		Yellow, url, statusCode)
+}
+
+func worker(domain chan string, wg *sync.WaitGroup, wl []string, nf bool, TimeOut int, OnlyOk bool) {
 	defer wg.Done()
 	for b := range domain {
 		ForbidFinder(b, wl, nf, TimeOut, OnlyOk, SingleScan)
@@ -335,13 +351,23 @@ func main() {
 	var wg sync.WaitGroup
 	DomainsList := make(chan string)
 
+	// Add new flags
+	var dirsList string
+	flag.StringVar(&dirsList, "dirs-list", "", "Comma-separated list of directories to check")
+	var wl string
+	flag.StringVar(&wl, "w", "", "Forbidden directories WordList (file path)")
+
+	// Use the package-level outputFormat
+	flag.StringVar(&outputFormat, "f", "", "Output format (json or csv)")
+
+	var outputPath string
+	flag.StringVar(&outputPath, "o", "", "Output file path for successful bypasses")
+
 	////| Requests TimeOut
 	var TimeOut int
 	flag.IntVar(&TimeOut, "t", 10000, "Set the timeout of the requests (Millisecond)")
 	var con int
 	flag.IntVar(&con, "threads", 40, "Number of threads")
-	var wl string
-	flag.StringVar(&wl, "wl", "", "Forbidden directories WordList")
 
 	showErr := flag.Bool("err", false, "If you want to show errors!(Includes 404 errors) [True-False]")
 
@@ -354,23 +380,74 @@ func main() {
 
 	var SingleSite string
 	flag.StringVar(&SingleSite, "single", "", "Only scan single target e.g (-single https://example.com/)")
+
+	// Add verbose flag
+	flag.BoolVar(&verbose, "v", false, "Verbose output (show all requests)")
+
 	flag.Parse()
 	// showErr = strings.ToLower(showErr)
-
-	if wl != "" {
-		ForbiddenList, err := os.Open(wl)
-
+	if !verbose {
+		*showErr = true
+	}
+	// Handle directories list
+	if wl == "" {
+		if dirsList != "" {
+			// Use provided comma-separated list
+			ForbiddenList = strings.Split(dirsList, ",")
+		} else {
+			// Try to read from default file
+			dirs, err := readDirsFromFile(defaultDirsFile)
+			if err != nil {
+				// Fall back to default hardcoded list
+				ForbiddenList = []string{
+					"admin", "test", "img", "inc", "includes",
+					"include", "images", "pictures", "gallery",
+					"css", "js", "asset", "assets", "backup",
+					"static", "cms", "blog", "uploads", "files",
+				}
+			} else {
+				ForbiddenList = dirs
+			}
+		}
+	} else {
+		// Read from provided wordlist file
+		dirs, err := readDirsFromFile(wl)
 		if err != nil {
-
-			finalErr := fmt.Sprintf("%s [%s]", "There was error opening this file!", wl)
+			finalErr := fmt.Sprintf("Error reading wordlist file: %s", wl)
 			err0r(err, finalErr)
-			_ = ForbiddenList
+		}
+		ForbiddenList = dirs
+	}
+
+	// Handle output file
+	if outputPath != "" {
+		if err := ensureDir(outputPath); err != nil {
+			finalErr := fmt.Sprintf("Error creating output directory: %v", err)
+			err0r(err, finalErr)
+		}
+
+		var err error
+		outputFile, err = os.Create(outputPath)
+		if err != nil {
+			finalErr := fmt.Sprintf("Error creating output file: %s", outputPath)
+			err0r(err, finalErr)
+		}
+		defer outputFile.Close()
+
+		// Write header for CSV format
+		if outputFormat == "csv" {
+			_, err := outputFile.WriteString("target,path,payload,status_code,timestamp\n")
+			if err != nil {
+				finalErr := fmt.Sprintf("Error writing CSV header: %v", err)
+				err0r(err, finalErr)
+			}
 		}
 	}
+
 	if SingleSite == "" {
 		for c := 0; c <= con; c++ {
 			wg.Add(1)
-			go worker(DomainsList, &wg, wl, *showErr, TimeOut, *OnlyOK)
+			go worker(DomainsList, &wg, ForbiddenList, *showErr, TimeOut, *OnlyOK)
 		}
 		sc := bufio.NewScanner(os.Stdin)
 		stat, _ := os.Stdin.Stat()
@@ -391,7 +468,35 @@ func main() {
 		wg.Wait()
 
 	} else {
-		ForbidFinder(SingleSite, wl, *showErr, TimeOut, *OnlyOK, true)
+		ForbidFinder(SingleSite, ForbiddenList, *showErr, TimeOut, *OnlyOK, true)
 	}
 
+}
+
+// Helper function to read directories from file
+func readDirsFromFile(filepath string) ([]string, error) {
+	content, err := ioutil.ReadFile(filepath)
+	if err != nil {
+		return nil, err
+	}
+	dirs := strings.Split(strings.TrimSpace(string(content)), "\n")
+	// Remove empty lines and trim spaces
+	var cleanDirs []string
+	for _, dir := range dirs {
+		if trimmed := strings.TrimSpace(dir); trimmed != "" {
+			cleanDirs = append(cleanDirs, trimmed)
+		}
+	}
+	return cleanDirs, nil
+}
+
+// Helper function to ensure directory exists
+func ensureDir(path string) error {
+	dir := filepath.Dir(path)
+	if dir != "." {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("failed to create directory %s: %v", dir, err)
+		}
+	}
+	return nil
 }

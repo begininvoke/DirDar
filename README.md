@@ -33,42 +33,68 @@ To make it easier to execute you can put the directory to the binary in your env
 ## Tool screen:
 * Linux
 
-
   <img src="statics/img/firstScreen.png" alt="linux" ></a>
-
 
 * Windows
 
   <img src="statics/img/windows.JPG" alt="windows" ></a>
   
-  
 ## Help&Flags
 
 ```
-  -threads int
-    	Number of threads (Defaulf 40)
+  -dirs-list string
+        Comma-separated list of directories to check (default "admin,test,img,inc,includes,include,images,pictures,gallery,css,js,asset,assets,backup,static,cms,blog,uploads,files")
   -err
-    	If you want to show errors!(Includes 404 errors) [True-False]
+        If you want to show errors!(Includes 404 errors) [True-False]
+  -f string
+        Output format (json or csv)
+  -o string
+        Output file path for successful bypasses
   -only-ok
-    	Print out only OK (Bypassed and dir listing) 
+        Print out only OK (Bypassed and dir listing)
   -single string
-    	Only scan single target e.g (-single https://example.com/)
+        Only scan single target e.g (-single https://example.com/)
   -t int
-    	Set the timeout of the requests (default 10000)
-  -wl string
-    	Forbidden directories WordList
-
+        Set the timeout of the requests (default 10000)
+  -threads int
+        Number of threads (default 40)
+  -v    Verbose output (show all requests)
+  -w string
+        Forbidden directories WordList (file path)
 ```
 
 * Screenshot
 
   <img src="statics/img/help.png" alt="help" ></a>
 
+## New Features
+- Added support for reading directories from `dirs-list.txt` by default
+- Added JSON/CSV output formats (`-f` flag)
+- Added output file support (`-o` flag) with automatic directory creation
+- Added verbose mode (`-v` flag) to show detailed request information
+- Improved directory handling with default wordlist fallback
+- Better error handling and file management
+
+## Usage Examples
+
+```bash
+# Basic scan with default directories
+./dirdar -single https://example.com
+
+# Use custom wordlist and save results to JSON
+./dirdar -single https://example.com -w custom-dirs.txt -f json -o results.json
+
+# Scan with verbose output and save to CSV
+./dirdar -single https://example.com -v -f csv -o results/scan.csv
+
+# Use custom directory list
+./dirdar -single https://example.com -dirs-list "admin,config,secret"
+```
+
 ## Bugs found by DirDar: (Will share the write up ASAP)
 * BackUp files at [MTN Group](https://hackerone.com/mtn_group?type=team) (Triaged)
 * OLD php scripts to SQLi at [MTN Group](https://hackerone.com/mtn_group?type=team) (Triaged)
 * OLD Files to information disclosure at [BOSCH](http://psirt.bosch.com/) (Triaged)
-
 
 ## Review:
 
