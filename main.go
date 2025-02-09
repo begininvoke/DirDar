@@ -474,8 +474,24 @@ func main() {
 }
 
 // Helper function to read directories from file
-func readDirsFromFile(filepath string) ([]string, error) {
-	content, err := ioutil.ReadFile(filepath)
+func readDirsFromFile(filepathS string) ([]string, error) {
+	appPath, err := os.Executable()
+	if err != nil {
+		fmt.Printf("Failed to get application path: %v\n", err)
+		return nil, err
+	}
+	appDir := filepath.Dir(appPath)
+	defaultLocalPath := filepath.Join(appDir, filepathS)
+	defaultGlobalPath := "/usr/local/bin/" + filepathS
+	fmt.Printf("Checking for  in %s\n and %s\n", appDir, defaultGlobalPath)
+	// Check if the file exists in the application's directory
+	configfilepath := defaultLocalPath
+	if _, err := os.Stat(configfilepath); os.IsNotExist(err) {
+		// If not found in the app directory, fall back to /usr/local/bin
+		fmt.Printf(" not found in %s, trying %s\n", appDir, defaultGlobalPath)
+		configfilepath = defaultGlobalPath
+	}
+	content, err := ioutil.ReadFile(configfilepath)
 	if err != nil {
 		return nil, err
 	}
