@@ -389,6 +389,10 @@ func main() {
 	if !verbose {
 		*showErr = true
 	}
+	if !checkSiteIsUp(SingleSite) {
+		fmt.Printf("🚨 Host %s is unreachable, aborting scan\n", SingleSite)
+		return
+	}
 	// Handle directories list
 	if wl == "" {
 		if dirsList != "" {
@@ -515,4 +519,25 @@ func ensureDir(path string) error {
 		}
 	}
 	return nil
+}
+func checkSiteIsUp(url string) bool {
+	client := &http.Client{
+		Timeout: 20 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+
+	resp, err := client.Head(url)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	// Consider any 2xx/3xx status as "up"
+	if resp.StatusCode >= 200 && resp.StatusCode < 400 {
+		fmt.Printf("✅ Host is reachable (%s)\n", resp.Status)
+		return true
+	}
+	return false
 }
